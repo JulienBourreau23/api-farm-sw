@@ -1,6 +1,8 @@
 """
 Calcul des moyennes de substats avec filtres optionnels.
 Deux colonnes : moyenne sans grind (base) et moyenne avec grind (base + grind_val).
+La stat principale de chaque rune est exclue du calcul des substats pour ne pas
+fausser les moyennes (ex: une rune slot 2 VIT ne compte pas dans la moyenne VIT substats).
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -23,7 +25,10 @@ async def compute_averages(
     """
 
     # ── Construction dynamique de la requête ────────────────────
-    conditions = ["r.import_id = :import_id"]
+    conditions = [
+        "r.import_id = :import_id",
+        "rs.stat_id != r.pri_stat_id",  # Exclure la stat principale de la rune
+    ]
     params: dict = {"import_id": import_id}
 
     if set_id is not None:
