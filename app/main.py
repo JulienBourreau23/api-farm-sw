@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.routers import import_router, averages_router
+from app.routers import stats_router
 
 app = FastAPI(
     title="SW Farming API",
@@ -10,7 +11,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Next.js en dev
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -18,6 +19,7 @@ app.add_middleware(
 
 app.include_router(import_router.router)
 app.include_router(averages_router.router)
+app.include_router(stats_router.router)
 
 
 @app.get("/health")
