@@ -16,7 +16,7 @@ async def replace_import(
     Parse le JSON et remplace l'import existant de l'utilisateur.
     Retourne les infos du nouvel import.
     """
-    wizard_info, runes = parse_sw_json(raw_data)
+    wizard_info, runes, artifacts = parse_sw_json(raw_data)
 
     async with db.begin():
         # ── 1. Récupérer l'ancien import actif ──────────────────
@@ -34,16 +34,16 @@ async def replace_import(
                 RETURNING id, imported_at
             """),
             {
-                "user_id":    user_id,
-                "wizard_id":  wizard_info["wizard_id"],
+                "user_id":     user_id,
+                "wizard_id":   wizard_info["wizard_id"],
                 "wizard_name": wizard_info["wizard_name"],
-                "rune_count": len(runes),
+                "rune_count":  len(runes),
             }
         )
-        new_import = result.fetchone()
+        new_import    = result.fetchone()
         new_import_id = new_import.id
 
-        # ── 3. Insérer les runes par batch ───────────────────────
+        # ── 3. Insérer les runes ─────────────────────────────────
         for rune in runes:
             result = await db.execute(
                 text("""
@@ -77,7 +77,6 @@ async def replace_import(
             )
             new_rune_id = result.fetchone().id
 
-            # Insérer les substats
             for sub in rune["substats"]:
                 await db.execute(
                     text("""
@@ -93,23 +92,69 @@ async def replace_import(
                     }
                 )
 
-        # ── 4. Supprimer l'ancien import (CASCADE sur runes + substats) ──
+        # ── 4. Insérer les artefacts ─────────────────────────────
+        for artifact in artifacts:
+            result = await db.execute(
+                text("""
+                    INSERT INTO artifacts (
+                        import_id, rid, type, attribute, unit_style,
+                        rank, level, pri_effect_id, pri_effect_val,
+                        occupied_id, locked, date_add
+                    ) VALUES (
+                        :import_id, :rid, :type, :attribute, :unit_style,
+                        :rank, :level, :pri_effect_id, :pri_effect_val,
+                        :occupied_id, :locked, :date_add
+                    ) RETURNING id
+                """),
+                {
+                    "import_id":      new_import_id,
+                    "rid":            artifact["rid"],
+                    "type":           artifact["type"],
+                    "attribute":      artifact["attribute"],
+                    "unit_style":     artifact["unit_style"],
+                    "rank":           artifact["rank"],
+                    "level":          artifact["level"],
+                    "pri_effect_id":  artifact["pri_effect_id"],
+                    "pri_effect_val": artifact["pri_effect_val"],
+                    "occupied_id":    artifact["occupied_id"],
+                    "locked":         artifact["locked"],
+                    "date_add":       artifact["date_add"],
+                }
+            )
+            new_artifact_id = result.fetchone().id
+
+            for eff in artifact["sec_effects"]:
+                await db.execute(
+                    text("""
+                        INSERT INTO artifact_sec_effects (artifact_id, effect_id, value, lock_level)
+                        VALUES (:artifact_id, :effect_id, :value, :lock_level)
+                    """),
+                    {
+                        "artifact_id": new_artifact_id,
+                        "effect_id":   eff["effect_id"],
+                        "value":       eff["value"],
+                        "lock_level":  eff["lock_level"],
+                    }
+                )
+
+        # ── 5. Supprimer l'ancien import (CASCADE runes + artefacts) ──
         if old_import:
             await db.execute(
                 text("DELETE FROM sw_imports WHERE id = :id"),
                 {"id": old_import.id}
             )
 
-        # ── 5. Invalider le cache des moyennes ───────────────────
+        # ── 6. Invalider le cache des moyennes ───────────────────
         await db.execute(
             text("DELETE FROM stats_averages WHERE user_id = :uid"),
             {"uid": user_id}
         )
 
     return {
-        "import_id":    new_import_id,
-        "wizard_name":  wizard_info["wizard_name"],
-        "wizard_id":    wizard_info["wizard_id"],
-        "rune_count":   len(runes),
-        "imported_at":  new_import.imported_at,
+        "import_id":      new_import_id,
+        "wizard_name":    wizard_info["wizard_name"],
+        "wizard_id":      wizard_info["wizard_id"],
+        "rune_count":     len(runes),
+        "artifact_count": len(artifacts),
+        "imported_at":    new_import.imported_at,
     }
