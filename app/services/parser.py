@@ -14,6 +14,7 @@ Artefacts :
   unit_style : 1=ATQ 2=DEF 3=PV 4=Support (0 si type=1)
 """
 import json
+from datetime import datetime
 
 
 def extract_all_runes(data: dict) -> list[dict]:
@@ -94,6 +95,16 @@ def parse_rune(raw: dict) -> dict | None:
         return None
 
 
+def _parse_date(value: str | None) -> datetime | None:
+    """Convertit une string 'YYYY-MM-DD HH:MM:SS' en datetime, ou None."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S")
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_artifact(raw: dict) -> dict | None:
     """
     Transforme un artefact brut du JSON en dict prêt pour l'INSERT.
@@ -114,7 +125,7 @@ def parse_artifact(raw: dict) -> dict | None:
             "pri_effect_val": pri_effect[1],
             "occupied_id":    raw.get("occupied_id", 0),
             "locked":         raw.get("locked", 0),
-            "date_add":       raw.get("date_add"),
+            "date_add":       _parse_date(raw.get("date_add")),
             "sec_effects":    [],
         }
 
