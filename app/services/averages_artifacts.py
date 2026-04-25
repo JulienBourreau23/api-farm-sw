@@ -39,27 +39,27 @@ EFFECT_MAX_VALUE: dict[int, float] = {
     411: 20.0,   # Autres
 }
 
-# Ordre d'affichage exact selon le JSON de traduction
+# Ordre d'affichage selon arte.json + répartition réelle vérifiée sur les données
 ORDER_ATTRIBUT = [
-    # Aug. dgts élément
-    206, 210, 214, 215, 218,
-    # Réd. dgts élément
-    219, 220, 221, 222, 223,
-    # Communs
-    306, 307, 308, 309,
-    400, 401, 404, 405, 406,
-    407, 408, 409, 410, 411,
+    # Spécifiques élémentaires
+    206, 210, 214, 215, 218,   # Aug. dgts élément
+    219, 220, 221, 222, 223,   # Réd. dgts élément
+    # Communs élémentaire
+    306, 307, 308, 309,        # Renf ATQ/DEF, VIT, Bombes, CRIT reçus
+    400, 401, 404, 405, 406,   # Drain vie, Dgts/PV, ATQ, DEF, VIT
+    407, 408, 409, 410, 411,   # D.CRIT+, Contre-attaque, Autres
+    224, 225, 226,             # CRIT comp
 ]
 
 ORDER_TYPE = [
     # Spécifiques type
-    224, 225, 226,
-    300, 301, 302,
-    303, 304, 305,
-    # Communs
-    306, 307, 308, 309,
-    400, 401, 404, 405, 406,
-    407, 408, 409, 410, 411,
+    224, 225, 226,             # CRIT comp
+    300, 301, 302,             # Soins comp
+    303, 304, 305,             # Précision comp
+    # Communs type
+    306, 307, 308, 309,        # Renf ATQ/DEF, VIT, Bombes, CRIT reçus
+    400, 401, 404, 405, 406,   # Drain vie, Dgts/PV, ATQ, DEF, VIT
+    407, 408, 409, 410, 411,   # D.CRIT+, Contre-attaque, Autres
 ]
 
 
