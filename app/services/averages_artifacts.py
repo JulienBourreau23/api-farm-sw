@@ -6,33 +6,37 @@ Répartition réelle (vérifiée sur les données) :
   - 300-309 : type=1 uniquement (élémentaire)
   - 400-411 : type=2 uniquement (style)
 
-max_value = valeur maximale possible (quadroll, source : elliabot.neocities.org)
+IMPORTANT : les valeurs brutes dans le JSON SW sont stockées en dixièmes de %.
+On divise par 10 à la sortie pour obtenir les vraies valeurs en %.
+  ex : valeur brute 9 → 0.9%, valeur brute 66 → 6.6%
+
+max_value = valeur maximale possible en % (source : elliabot.neocities.org, quadroll)
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import Optional
 
-# Valeurs max possibles par effect_id (quadroll = 4 upgrades au maximum)
+# Valeurs max en % réels (quadroll = 4 upgrades au maximum)
 EFFECT_MAX_VALUE: dict[int, float] = {
     206: 25.0, 210: 25.0, 214: 25.0, 215: 25.0, 218: 25.0,  # Aug. dgts élément
     219: 30.0, 220: 30.0, 221: 30.0, 222: 30.0, 223: 30.0,  # Réd. dgts élément
     224: 30.0, 225: 30.0, 226: 30.0, 227: 30.0,              # CRIT comp
     300: 30.0, 301: 30.0, 302: 30.0,                          # Soins comp
     303: 30.0, 304: 30.0, 305: 30.0,                          # Précision comp
-    306: 25.0,  # Renf ATQ/DEF
-    307: 30.0,  # Aug VIT
-    308: 20.0,  # Dgts bombes
-    309: 20.0,  # CRIT reçus
-    400: 40.0,  # Drain de vie
-    401:  1.5,  # Dgts/HP
-    404: 20.0,  # Dgts/ATQ
-    405: 20.0,  # Dgts/DEF
-    406: 200.0, # Dgts/VIT
-    407: 30.0,  # D.CRIT+ PV ok
-    408: 60.0,  # D.CRIT+ état enn.
-    409: 20.0,  # D.CRIT+ comp alliés
-    410: 20.0,  # Contre-attaque
-    411: 20.0,  # Autres
+    306: 25.0,   # Renf ATQ/DEF
+    307: 30.0,   # Aug VIT
+    308: 20.0,   # Dgts bombes
+    309: 20.0,   # CRIT reçus
+    400: 40.0,   # Drain de vie
+    401:  1.5,   # Dgts/PV
+    404: 20.0,   # Dgts/ATQ
+    405: 20.0,   # Dgts/DEF
+    406: 200.0,  # Dgts/VIT
+    407: 30.0,   # D.CRIT+ PV ok
+    408: 60.0,   # D.CRIT+ état enn.
+    409: 20.0,   # D.CRIT+ comp alliés
+    410: 20.0,   # Contre-attaque
+    411: 20.0,   # Autres
 }
 
 # Ordre d'affichage exact selon le JSON de traduction
@@ -89,7 +93,7 @@ async def compute_artifact_averages(
     query = text(f"""
         SELECT
             ase.effect_id,
-            ROUND(AVG(ase.value)::numeric, 2) AS avg_value,
+            ROUND(AVG(ase.value)::numeric, 1) AS avg_raw,
             COUNT(*)::int                     AS artifact_count
         FROM artifact_sec_effects ase
         JOIN artifacts a ON a.id = ase.artifact_id
@@ -103,14 +107,22 @@ async def compute_artifact_averages(
 
     order = ORDER_TYPE if artifact_type == 2 else ORDER_ATTRIBUT
 
+    # Diviseur par effect_id — certains effets sont stockés en dixièmes de %
+    DIVISOR: dict[int, float] = {
+        221: 10.0,  # Réd. dgts Vent — valeurs brutes 25-152, réel max 30%
+        401: 10.0,  # Dgts/PV — valeurs brutes 4-19, réel max 1.5%
+    }
+
     averages = []
     for eid in order:
         row = rows_by_id.get(eid)
         if row:
+            divisor = DIVISOR.get(eid, 1.0)
+            avg_value = round(float(row.avg_raw) / divisor, 2)
             averages.append({
-                "effect_id":      row.effect_id,
-                "avg_value":      float(row.avg_value),
-                "max_value":      EFFECT_MAX_VALUE.get(row.effect_id, 0.0),
+                "effect_id":      eid,
+                "avg_value":      avg_value,
+                "max_value":      EFFECT_MAX_VALUE.get(eid, 0.0),
                 "artifact_count": row.artifact_count,
             })
 
