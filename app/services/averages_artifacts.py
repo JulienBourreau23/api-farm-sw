@@ -1,33 +1,39 @@
 """
 Calcul des moyennes des effets secondaires d'artefacts.
 
-Groupement statique (pas FLOOR) :
-  - group 100 : effets spécifiques élémentaires (attribut gauche uniquement)
-                206,210,214,215,218,219,220,221,222,223
-  - group 200 : effets communs aux deux types
-                224,225,226,227,306,307,308,309,
-                400,401,404,405,406,407,408,409,410,411
-  - group 300 : effets spécifiques type (droite uniquement)
-                300,301,302,303,304,305
+Répartition réelle (vérifiée sur les données) :
+  - 206-226 : présents sur les deux types (élémentaires ET style)
+  - 300-309 : type=1 uniquement (élémentaire)
+  - 400-411 : type=2 uniquement (style)
+
+Ordre d'affichage défini par le JSON de traduction du jeu :
+  Artefact_attribut  : 206,210,214,215,218,219,220,221,222,223,306,307,308,309,
+                       400,401,404,405,406,407,408,409,410,411,224,225,226
+  Artefact_de_type   : 224,225,226,300,301,302,303,304,305,306,307,308,309,
+                       400,401,404,405,406,407,408,409,410,411
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import Optional
 
-# Mapping statique effect_id → group
-EFFECT_GROUP_MAP = {
-    # Spécifiques élémentaires (attribut) → group 100
-    206: 100, 210: 100, 214: 100, 215: 100, 218: 100,
-    219: 100, 220: 100, 221: 100, 222: 100, 223: 100,
-    # Communs aux deux → group 200
-    224: 200, 225: 200, 226: 200, 227: 200,
-    306: 200, 307: 200, 308: 200, 309: 200,
-    400: 200, 401: 200, 404: 200, 405: 200, 406: 200,
-    407: 200, 408: 200, 409: 200, 410: 200, 411: 200,
-    # Spécifiques type → group 300
-    300: 300, 301: 300, 302: 300,
-    303: 300, 304: 300, 305: 300,
-}
+# Ordre d'affichage exact selon le JSON de traduction
+ORDER_ATTRIBUT = [
+    206, 210, 214, 215, 218,   # Aug. dgts élément
+    219, 220, 221, 222, 223,   # Réd. dgts élément
+    306, 307, 308, 309,        # Renf ATQ/DEF, VIT, Bombes, CRIT reçus
+    400, 401, 404, 405, 406,   # Drain vie, Dgts/PV, ATQ, DEF, VIT
+    407, 408, 409, 410, 411,   # D.CRIT+, Contre-attaque, Autres
+    224, 225, 226,             # CRIT comp (en fin car pas dans Artefact_attribut EN premier)
+]
+
+ORDER_TYPE = [
+    224, 225, 226,             # [Comp.1/2] Aug. CRIT, CRIT [3/4]
+    300, 301, 302,             # [Comp.1/2/3] Soins
+    303, 304, 305,             # [Comp.1/2/3] Précision
+    306, 307, 308, 309,        # Renf ATQ/DEF, VIT, Bombes, CRIT reçus
+    400, 401, 404, 405, 406,   # Drain vie, Dgts/PV, ATQ, DEF, VIT
+    407, 408, 409, 410, 411,   # D.CRIT+, Contre-attaque, Autres
+]
 
 
 async def compute_artifact_averages(
@@ -71,22 +77,27 @@ async def compute_artifact_averages(
         JOIN artifacts a ON a.id = ase.artifact_id
         WHERE {where_clause}
         GROUP BY ase.effect_id
-        ORDER BY ase.effect_id
     """)
 
     result = await db.execute(query, params)
     rows = result.fetchall()
+    rows_by_id = {row.effect_id: row for row in rows}
 
-    return [
-        {
-            "effect_id":      row.effect_id,
-            "avg_base":       float(row.avg_base),
-            "avg_with_lock":  float(row.avg_with_lock),
-            "artifact_count": row.artifact_count,
-            "effect_group":   EFFECT_GROUP_MAP.get(row.effect_id, 200),
-        }
-        for row in rows
-    ]
+    # Choisir l'ordre selon le type demandé
+    order = ORDER_TYPE if artifact_type == 2 else ORDER_ATTRIBUT
+
+    averages = []
+    for eid in order:
+        row = rows_by_id.get(eid)
+        if row:
+            averages.append({
+                "effect_id":      row.effect_id,
+                "avg_base":       float(row.avg_base),
+                "avg_with_lock":  float(row.avg_with_lock),
+                "artifact_count": row.artifact_count,
+            })
+
+    return averages
 
 
 async def get_artifact_count(
