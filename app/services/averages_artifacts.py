@@ -41,18 +41,22 @@ EFFECT_MAX_VALUE: dict[int, float] = {
 
 # Ordre d'affichage exact selon le JSON de traduction
 ORDER_ATTRIBUT = [
+    # Aug. dgts élément
     206, 210, 214, 215, 218,
+    # Réd. dgts élément
     219, 220, 221, 222, 223,
+    # Communs
     306, 307, 308, 309,
     400, 401, 404, 405, 406,
     407, 408, 409, 410, 411,
-    224, 225, 226,
 ]
 
 ORDER_TYPE = [
+    # Spécifiques type
     224, 225, 226,
     300, 301, 302,
     303, 304, 305,
+    # Communs
     306, 307, 308, 309,
     400, 401, 404, 405, 406,
     407, 408, 409, 410, 411,
