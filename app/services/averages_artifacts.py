@@ -62,31 +62,31 @@ EFFECT_MAX_VALUE: dict[int, float] = {
     411: 30.0,   # 1re attaque Dgts CRIT
 }
 
-# Ordre d'affichage pour chaque type
+# Ordre d'affichage pour chaque type — spécifiques en premier comme dans le jeu
 ORDER_ATTRIBUT = [
-    # Communs (présents sur les deux types)
+    # Spécifiques type=1 en premier
+    300, 301, 302, 303, 304,   # Dgts infligés par élément
+    305, 306, 307, 308, 309,   # Dgts reçus par élément
+    # Communs ensuite
     204, 205, 206, 207,
     208, 209, 210,
     213, 214, 215,
     218, 219, 220, 221,
     222, 223, 224, 225, 226,
-    # Spécifiques type=1
-    300, 301, 302, 303, 304,   # Dgts infligés par élément
-    305, 306, 307, 308, 309,   # Dgts reçus par élément
 ]
 
 ORDER_ARCHETYPE = [
-    # Communs (présents sur les deux types)
-    204, 205, 206, 207,
-    208, 209, 210,
-    213, 214, 215,
-    218, 219, 220, 221,
-    222, 223, 224, 225, 226,
-    # Spécifiques type=2
+    # Spécifiques type=2 en premier
     400, 401, 402, 403,        # Dgts CRIT comp 1/2/3/4
     404, 405, 406,             # Soins comp 1/2/3
     407, 408, 409,             # Précision comp 1/2/3
     410, 411,                  # Dgts CRIT [3/4] + 1re attaque
+    # Communs ensuite
+    204, 205, 206, 207,
+    208, 209, 210,
+    213, 214, 215,
+    218, 219, 220, 221,
+    222, 223, 224, 225, 226,
 ]
 
 
