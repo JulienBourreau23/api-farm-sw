@@ -8,7 +8,7 @@ Répartition réelle vérifiée sur les données :
   type=2 (Archetype) : 206-226 + 400-411
 
 Valeurs max théoriques (source : elliabot.neocities.org, quadroll)
-Note : corrections appliquées à l'import dans parser.py pour 221 et 223.
+Note : correction appliquée à l'import dans parser.py pour 223 (÷2).
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -30,9 +30,9 @@ EFFECT_MAX_VALUE: dict[int, float] = {
     218:  1.5,   # Dgts supp. % PV
     219: 20.0,   # Dgts supp. % ATQ
     220: 20.0,   # Dgts supp. % DEF
-    221: 200.0,  # Dgts supp. % VIT (après ÷10 dans parser)
+    221: 200.0,  # Dgts supp. % VIT — valeurs brutes = % directs
     222: 30.0,   # D.CRIT+ bon état PV enn.
-    223: 60.0,   # D.CRIT+ mauvais état PV enn. (après ÷2 dans parser)
+    223: 30.0,   # D.CRIT+ mauvais état PV enn. (après ÷2 dans parser, max réel = 30%)
     224: 30.0,   # D.CRIT skill cible unique
     225: 20.0,   # Contre-attaque/Co-op
     226: 25.0,   # Effet aug. ATQ/DEF
