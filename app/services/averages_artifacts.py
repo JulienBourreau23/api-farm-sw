@@ -1,60 +1,92 @@
 """
 Calcul des moyennes des effets secondaires d'artefacts.
 
-Répartition réelle (vérifiée sur les données) :
-  - 206-226 : présents sur les deux types
-  - 300-309 : type=1 uniquement (élémentaire)
-  - 400-411 : type=2 uniquement (style)
+Mapping basé sur sw-exporter/app/mapping.js (source officielle).
 
-IMPORTANT : les valeurs brutes dans le JSON SW sont stockées en dixièmes de %.
-On divise par 10 à la sortie pour obtenir les vraies valeurs en %.
-  ex : valeur brute 9 → 0.9%, valeur brute 66 → 6.6%
+Répartition réelle vérifiée sur les données :
+  type=1 (Attribut)  : 206-226 + 300-309
+  type=2 (Archetype) : 206-226 + 400-411
 
-max_value = valeur maximale possible en % (source : elliabot.neocities.org, quadroll)
+Valeurs max théoriques (source : elliabot.neocities.org, quadroll)
+Note : corrections appliquées à l'import dans parser.py pour 221 et 223.
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import Optional
 
-# Valeurs max en % réels (quadroll = 4 upgrades au maximum)
+# Valeurs max en % réels après corrections (quadroll = 4 upgrades max)
 EFFECT_MAX_VALUE: dict[int, float] = {
-    206: 25.0, 210: 25.0, 214: 25.0, 215: 25.0, 218: 25.0,  # Aug. dgts élément
-    219: 30.0, 220: 30.0, 221: 30.0, 222: 30.0, 223: 30.0,  # Réd. dgts élément
-    224: 30.0, 225: 30.0, 226: 30.0, 227: 30.0,              # CRIT comp
-    300: 30.0, 301: 30.0, 302: 30.0,                          # Soins comp
-    303: 30.0, 304: 30.0, 305: 30.0,                          # Précision comp
-    306: 25.0,   # Renf ATQ/DEF
-    307: 30.0,   # Aug VIT
-    308: 20.0,   # Dgts bombes
-    309: 20.0,   # CRIT reçus
-    400: 40.0,   # Drain de vie
-    401:  1.5,   # Dgts/PV
-    404: 20.0,   # Dgts/ATQ
-    405: 20.0,   # Dgts/DEF
-    406: 200.0,  # Dgts/VIT
-    407: 30.0,   # D.CRIT+ PV ok
-    408: 60.0,   # D.CRIT+ état enn.
-    409: 20.0,   # D.CRIT+ comp alliés
-    410: 20.0,   # Contre-attaque
-    411: 20.0,   # Autres
+    # Communs type1 + type2 (206-226)
+    204: 25.0,   # Effet aug. ATQ
+    205: 25.0,   # Effet aug. DEF
+    206: 30.0,   # Effet aug. VIT
+    207: 30.0,   # Effet Tx Crit
+    208: 20.0,   # Dgts contre-attaque
+    209: 20.0,   # Dgts attaque conjointe
+    210: 20.0,   # Dgts bombes
+    213: 20.0,   # Dgts reçus sous incapacité
+    214: 20.0,   # Dgts CRIT reçus
+    215: 40.0,   # Drain de vie
+    218:  1.5,   # Dgts supp. % PV
+    219: 20.0,   # Dgts supp. % ATQ
+    220: 20.0,   # Dgts supp. % DEF
+    221: 200.0,  # Dgts supp. % VIT (après ÷10 dans parser)
+    222: 30.0,   # D.CRIT+ bon état PV enn.
+    223: 60.0,   # D.CRIT+ mauvais état PV enn. (après ÷2 dans parser)
+    224: 30.0,   # D.CRIT skill cible unique
+    225: 20.0,   # Contre-attaque/Co-op
+    226: 25.0,   # Effet aug. ATQ/DEF
+    # Spécifiques type=1 (300-309)
+    300: 25.0,   # Dgts infligés Feu
+    301: 25.0,   # Dgts infligés Eau
+    302: 25.0,   # Dgts infligés Vent
+    303: 25.0,   # Dgts infligés Lum.
+    304: 25.0,   # Dgts infligés Tén.
+    305: 30.0,   # Dgts reçus Feu
+    306: 30.0,   # Dgts reçus Eau
+    307: 30.0,   # Dgts reçus Vent
+    308: 30.0,   # Dgts reçus Lum.
+    309: 30.0,   # Dgts reçus Tén.
+    # Spécifiques type=2 (400-411)
+    400: 30.0,   # [Comp.1] Dgts CRIT
+    401: 30.0,   # [Comp.2] Dgts CRIT
+    402: 30.0,   # [Comp.3] Dgts CRIT
+    403: 30.0,   # [Comp.4] Dgts CRIT
+    404: 30.0,   # [Comp.1] Soins
+    405: 30.0,   # [Comp.2] Soins
+    406: 30.0,   # [Comp.3] Soins
+    407: 30.0,   # [Comp.1] Précision
+    408: 30.0,   # [Comp.2] Précision
+    409: 30.0,   # [Comp.3] Précision
+    410: 30.0,   # [Comp. 3/4] Dgts CRIT
+    411: 30.0,   # 1re attaque Dgts CRIT
 }
 
-# Ordre exact selon arte.json
+# Ordre d'affichage pour chaque type
 ORDER_ATTRIBUT = [
-    206, 210, 214, 215, 218,   # Aug. dgts élément
-    219, 220, 221, 222, 223,   # Réd. dgts élément
-    306, 307, 308, 309,        # ATK/DEF Boost, VIT, Bombes, CRIT reçus
-    400, 401, 404, 405, 406,   # Drain vie, Dgts/PV, ATQ, DEF, VIT
-    407, 408, 409, 410, 411,   # D.CRIT+, Contre-attaque, Autres
+    # Communs (présents sur les deux types)
+    204, 205, 206, 207,
+    208, 209, 210,
+    213, 214, 215,
+    218, 219, 220, 221,
+    222, 223, 224, 225, 226,
+    # Spécifiques type=1
+    300, 301, 302, 303, 304,   # Dgts infligés par élément
+    305, 306, 307, 308, 309,   # Dgts reçus par élément
 ]
 
-ORDER_TYPE = [
-    224, 225, 226, 227,        # CRIT comp 1/2/3/4
-    300, 301, 302,             # Soins comp 1/2/3
-    303, 304, 305,             # Précision comp 1/2/3
-    306, 307, 308, 309,        # ATK/DEF Boost, VIT, Bombes, CRIT reçus
-    400, 401, 404, 405, 406,   # Drain vie, Dgts/PV, ATQ, DEF, VIT
-    407, 408, 409, 410, 411,   # D.CRIT+, Contre-attaque, Autres
+ORDER_ARCHETYPE = [
+    # Communs (présents sur les deux types)
+    204, 205, 206, 207,
+    208, 209, 210,
+    213, 214, 215,
+    218, 219, 220, 221,
+    222, 223, 224, 225, 226,
+    # Spécifiques type=2
+    400, 401, 402, 403,        # Dgts CRIT comp 1/2/3/4
+    404, 405, 406,             # Soins comp 1/2/3
+    407, 408, 409,             # Précision comp 1/2/3
+    410, 411,                  # Dgts CRIT [3/4] + 1re attaque
 ]
 
 
@@ -92,7 +124,7 @@ async def compute_artifact_averages(
     query = text(f"""
         SELECT
             ase.effect_id,
-            ROUND(AVG(ase.value)::numeric, 1) AS avg_raw,
+            ROUND(AVG(ase.value)::numeric, 2) AS avg_value,
             COUNT(*)::int                     AS artifact_count
         FROM artifact_sec_effects ase
         JOIN artifacts a ON a.id = ase.artifact_id
@@ -104,23 +136,15 @@ async def compute_artifact_averages(
     rows = result.fetchall()
     rows_by_id = {row.effect_id: row for row in rows}
 
-    order = ORDER_TYPE if artifact_type == 2 else ORDER_ATTRIBUT
-
-    # Diviseur par effect_id — certains effets sont stockés en dixièmes de %
-    DIVISOR: dict[int, float] = {
-        221: 10.0,  # Réd. dgts Vent — valeurs brutes 25-152, réel max 30%
-        401: 10.0,  # Dgts/PV — valeurs brutes 4-19, réel max 1.5%
-    }
+    order = ORDER_ARCHETYPE if artifact_type == 2 else ORDER_ATTRIBUT
 
     averages = []
     for eid in order:
         row = rows_by_id.get(eid)
         if row:
-            divisor = DIVISOR.get(eid, 1.0)
-            avg_value = round(float(row.avg_raw) / divisor, 2)
             averages.append({
                 "effect_id":      eid,
-                "avg_value":      avg_value,
+                "avg_value":      float(row.avg_value),
                 "max_value":      EFFECT_MAX_VALUE.get(eid, 0.0),
                 "artifact_count": row.artifact_count,
             })
