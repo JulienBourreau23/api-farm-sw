@@ -94,7 +94,7 @@ def parse_rune(raw: dict) -> dict | None:
 # Corrections anomalies d'export Com2uS
 # Valeurs brutes incorrectes dans le JSON SW pour certains effect_ids
 ARTIFACT_VALUE_CORRECTIONS: dict[int, float] = {
-    221: 0.1,   # Dgts supp. % VIT : valeurs ×10 trop grandes → ÷10
+    # 221 (Dgts supp. % VIT) : pas de correction, valeurs brutes = % directs (max 200%)
     223: 0.5,   # D.CRIT+ mauvais état : valeurs ×2 trop grandes → ÷2
 }
 
