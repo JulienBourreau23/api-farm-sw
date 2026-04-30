@@ -12,36 +12,39 @@ router = APIRouter(prefix="/averages", tags=["averages"])
 async def get_averages(
     user_id: int,
     import_id: int,
-    set_id: Optional[int]   = Query(None, description="ID du set, null = tous sets"),
-    slot_no: Optional[int]  = Query(None, ge=1, le=6, description="Slot 1-6, null = tous"),
-    pri_stat: Optional[int] = Query(None, description="Filtre stat principale (slots 2/4/6)"),
+    set_id: Optional[int]    = Query(None, description="ID du set, null = tous sets"),
+    slot_no: Optional[int]   = Query(None, ge=1, le=6, description="Slot 1-6, null = tous"),
+    pri_stat: Optional[int]  = Query(None, description="Filtre stat principale (slots 2/4/6)"),
     min_upgrade: Optional[int] = Query(None, ge=0, le=15, description="Niveau minimum de la rune"),
-    refresh: bool           = Query(False, description="Forcer le recalcul même si cache présent"),
-    db: AsyncSession        = Depends(get_db),
+    is_ancient: Optional[bool] = Query(None, description="True = immémorial, False = normales, null = toutes"),
+    refresh: bool            = Query(False, description="Forcer le recalcul même si cache présent"),
+    db: AsyncSession         = Depends(get_db),
 ):
     """
     Retourne les moyennes de substats selon les filtres.
-    Utilise le cache si disponible, recalcule sinon.
-    
+    Utilise le cache si disponible (sauf si is_ancient ou min_upgrade sont spécifiés).
+
     Exemples d'appels :
-    - Tous sets, tous slots       : /averages/1/1
-    - Set Violent uniquement      : /averages/1/1?set_id=13
-    - Set Violent, slot 4, ATK%   : /averages/1/1?set_id=13&slot_no=4&pri_stat=4
-    - Runes +12 minimum           : /averages/1/1?set_id=13&min_upgrade=12
+    - Tous sets, tous slots         : /averages/1/1
+    - Runes normales uniquement     : /averages/1/1?is_ancient=false
+    - Runes immémorial uniquement   : /averages/1/1?is_ancient=true
+    - Set Violent, runes normales   : /averages/1/1?set_id=13&is_ancient=false
     """
-    # Essayer le cache d'abord (sauf si refresh forcé ou filtre min_upgrade)
-    if not refresh and min_upgrade is None:
+    # Cache uniquement si pas de filtre is_ancient ni min_upgrade
+    use_cache = not refresh and min_upgrade is None and is_ancient is None
+
+    if use_cache:
         cached = await get_cached_averages(db, user_id, import_id, set_id, slot_no, pri_stat)
         if cached:
             return _build_response(cached, set_id, slot_no, pri_stat)
 
-    # Calcul frais
     averages = await compute_averages(
         db, user_id, import_id,
         set_id=set_id,
         slot_no=slot_no,
         pri_stat_filter=pri_stat,
         min_upgrade=min_upgrade,
+        is_ancient=is_ancient,
     )
 
     return _build_response(averages, set_id, slot_no, pri_stat)
@@ -50,7 +53,7 @@ async def get_averages(
 def _build_response(averages: list[dict], set_id, slot_no, pri_stat) -> SetAveragesOut:
     return SetAveragesOut(
         set_id=set_id,
-        set_name=None,      # Le front enrichit avec son référentiel local
+        set_name=None,
         slot_no=slot_no,
         pri_stat_filter=pri_stat,
         averages=[SubstatAverage(**a) for a in averages],

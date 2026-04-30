@@ -3,6 +3,10 @@ Calcul des moyennes de substats avec filtres optionnels.
 Deux colonnes : moyenne sans grind (base) et moyenne avec grind (base + grind_val).
 La stat principale de chaque rune est exclue du calcul des substats pour ne pas
 fausser les moyennes (ex: une rune slot 2 VIT ne compte pas dans la moyenne VIT substats).
+
+is_ancient : True = runes immémorial uniquement (class >= 10)
+             False = runes normales uniquement (class < 10)
+             None = toutes les runes (défaut)
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -17,6 +21,7 @@ async def compute_averages(
     slot_no: Optional[int] = None,
     pri_stat_filter: Optional[int] = None,
     min_upgrade: Optional[int] = None,
+    is_ancient: Optional[bool] = None,
 ) -> list[dict]:
     """
     Calcule les moyennes des substats selon les filtres.
@@ -27,7 +32,7 @@ async def compute_averages(
     # ── Construction dynamique de la requête ────────────────────
     conditions = [
         "r.import_id = :import_id",
-        "rs.stat_id != r.pri_stat_id",  # Exclure la stat principale de la rune
+        "rs.stat_id != r.pri_stat_id",  # Exclure la stat principale
     ]
     params: dict = {"import_id": import_id}
 
@@ -46,6 +51,11 @@ async def compute_averages(
     if min_upgrade is not None:
         conditions.append("r.upgrade_curr >= :min_upgrade")
         params["min_upgrade"] = min_upgrade
+
+    if is_ancient is True:
+        conditions.append("r.class >= 10")
+    elif is_ancient is False:
+        conditions.append("r.class < 10")
 
     where_clause = " AND ".join(conditions)
 
@@ -82,37 +92,16 @@ async def compute_averages(
         for row in rows
     ]
 
-    # ── Mise en cache ────────────────────────────────────────────
-    await db.execute(
-        text("""
-            DELETE FROM stats_averages
-            WHERE user_id = :user_id
-              AND import_id = :import_id
-              AND (set_id IS NOT DISTINCT FROM :set_id)
-              AND (slot_no IS NOT DISTINCT FROM :slot_no)
-              AND (pri_stat_filter IS NOT DISTINCT FROM :pri_stat_filter)
-        """),
-        {
-            "user_id":         user_id,
-            "import_id":       import_id,
-            "set_id":          set_id,
-            "slot_no":         slot_no,
-            "pri_stat_filter": pri_stat_filter,
-        }
-    )
-
-    for avg in averages:
+    # ── Mise en cache (pas de cache pour is_ancient pour l'instant) ──
+    if is_ancient is None and min_upgrade is None:
         await db.execute(
             text("""
-                INSERT INTO stats_averages (
-                    user_id, import_id, set_id, slot_no,
-                    pri_stat_filter, stat_id,
-                    avg_base, avg_with_grind, rune_count
-                ) VALUES (
-                    :user_id, :import_id, :set_id, :slot_no,
-                    :pri_stat_filter, :stat_id,
-                    :avg_base, :avg_with_grind, :rune_count
-                )
+                DELETE FROM stats_averages
+                WHERE user_id = :user_id
+                  AND import_id = :import_id
+                  AND (set_id IS NOT DISTINCT FROM :set_id)
+                  AND (slot_no IS NOT DISTINCT FROM :slot_no)
+                  AND (pri_stat_filter IS NOT DISTINCT FROM :pri_stat_filter)
             """),
             {
                 "user_id":         user_id,
@@ -120,14 +109,36 @@ async def compute_averages(
                 "set_id":          set_id,
                 "slot_no":         slot_no,
                 "pri_stat_filter": pri_stat_filter,
-                "stat_id":         avg["stat_id"],
-                "avg_base":        avg["avg_base"],
-                "avg_with_grind":  avg["avg_with_grind"],
-                "rune_count":      avg["rune_count"],
             }
         )
 
-    await db.commit()
+        for avg in averages:
+            await db.execute(
+                text("""
+                    INSERT INTO stats_averages (
+                        user_id, import_id, set_id, slot_no,
+                        pri_stat_filter, stat_id,
+                        avg_base, avg_with_grind, rune_count
+                    ) VALUES (
+                        :user_id, :import_id, :set_id, :slot_no,
+                        :pri_stat_filter, :stat_id,
+                        :avg_base, :avg_with_grind, :rune_count
+                    )
+                """),
+                {
+                    "user_id":         user_id,
+                    "import_id":       import_id,
+                    "set_id":          set_id,
+                    "slot_no":         slot_no,
+                    "pri_stat_filter": pri_stat_filter,
+                    "stat_id":         avg["stat_id"],
+                    "avg_base":        avg["avg_base"],
+                    "avg_with_grind":  avg["avg_with_grind"],
+                    "rune_count":      avg["rune_count"],
+                }
+            )
+
+        await db.commit()
 
     return averages
 
@@ -142,6 +153,7 @@ async def get_cached_averages(
 ) -> list[dict] | None:
     """
     Retourne les moyennes depuis le cache si disponibles, sinon None.
+    Le cache n'est utilisé que pour les runes toutes confondues (pas de filtre is_ancient).
     """
     result = await db.execute(
         text("""
