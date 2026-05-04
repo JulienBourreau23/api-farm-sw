@@ -43,6 +43,31 @@ def extract_all_artifacts(data: dict) -> list[dict]:
     return artifacts
 
 
+def extract_units(data: dict) -> list[dict]:
+    """
+    Extrait les monstres possédés depuis unit_list.
+
+    Champs utilisés (confirmés sur JSON réel) :
+      - unit_id        : ID unique de l'unité (ex: 18424989813)
+      - unit_master_id : ID du type de monstre = com2us_id dans monsters_ref
+      - class          : étoiles actuelles 1-6
+      - unit_level     : niveau actuel 1-40
+    """
+    units = []
+    for unit in data.get("unit_list", []):
+        unit_master_id = unit.get("unit_master_id")
+        unit_id        = unit.get("unit_id")
+        if not unit_master_id or not unit_id:
+            continue
+        units.append({
+            "unit_id_sw":     unit_id,
+            "unit_master_id": unit_master_id,
+            "stars":          unit.get("class"),
+            "level":          unit.get("unit_level"),
+        })
+    return units
+
+
 def parse_rune(raw: dict) -> dict | None:
     """
     Transforme une rune brute du JSON en dict prêt pour l'INSERT.
@@ -92,9 +117,7 @@ def parse_rune(raw: dict) -> dict | None:
 
 
 # Corrections anomalies d'export Com2uS
-# Valeurs brutes incorrectes dans le JSON SW pour certains effect_ids
 ARTIFACT_VALUE_CORRECTIONS: dict[int, float] = {
-    # 221 (Dgts supp. % VIT) : pas de correction, valeurs brutes = % directs (max 200%)
     223: 0.5,   # D.CRIT+ mauvais état : valeurs ×2 trop grandes → ÷2
 }
 
@@ -129,7 +152,6 @@ def parse_artifact(raw: dict) -> dict | None:
             effect_id, value, lock_level = eff[0], eff[1], eff[2]
             if effect_id == 0:
                 continue
-            # Appliquer les corrections si nécessaire
             correction = ARTIFACT_VALUE_CORRECTIONS.get(effect_id)
             if correction is not None:
                 value = round(value * correction, 3)
@@ -155,10 +177,10 @@ def _parse_date(value: str | None) -> datetime | None:
         return None
 
 
-def parse_sw_json(raw_data: bytes | str | dict) -> tuple[dict, list[dict], list[dict]]:
+def parse_sw_json(raw_data: bytes | str | dict) -> tuple[dict, list[dict], list[dict], list[dict]]:
     """
     Point d'entrée principal.
-    Retourne (wizard_info, runes_parsées, artifacts_parsés).
+    Retourne (wizard_info, runes_parsées, artifacts_parsés, units_parsées).
     """
     if isinstance(raw_data, (bytes, str)):
         data = json.loads(raw_data)
@@ -176,4 +198,6 @@ def parse_sw_json(raw_data: bytes | str | dict) -> tuple[dict, list[dict], list[
     raw_artifacts = extract_all_artifacts(data)
     artifacts = [p for raw in raw_artifacts if (p := parse_artifact(raw))]
 
-    return wizard_info, runes, artifacts
+    units = extract_units(data)
+
+    return wizard_info, runes, artifacts, units

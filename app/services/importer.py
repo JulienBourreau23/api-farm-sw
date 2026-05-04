@@ -16,7 +16,7 @@ async def replace_import(
     Parse le JSON et remplace l'import existant de l'utilisateur.
     Retourne les infos du nouvel import.
     """
-    wizard_info, runes, artifacts = parse_sw_json(raw_data)
+    wizard_info, runes, artifacts, units = parse_sw_json(raw_data)
 
     async with db.begin():
         # ── 1. Récupérer l'ancien import actif ──────────────────
@@ -137,14 +137,33 @@ async def replace_import(
                     }
                 )
 
-        # ── 5. Supprimer l'ancien import (CASCADE runes + artefacts) ──
+        # ── 5. Insérer les monstres possédés ────────────────────
+        for unit in units:
+            await db.execute(
+                text("""
+                    INSERT INTO owned_monsters (
+                        import_id, unit_id_sw, unit_master_id, stars, level
+                    ) VALUES (
+                        :import_id, :unit_id_sw, :unit_master_id, :stars, :level
+                    )
+                """),
+                {
+                    "import_id":      new_import_id,
+                    "unit_id_sw":     unit["unit_id_sw"],
+                    "unit_master_id": unit["unit_master_id"],
+                    "stars":          unit["stars"],
+                    "level":          unit["level"],
+                }
+            )
+
+        # ── 6. Supprimer l'ancien import (CASCADE runes + artefacts + owned_monsters) ──
         if old_import:
             await db.execute(
                 text("DELETE FROM sw_imports WHERE id = :id"),
                 {"id": old_import.id}
             )
 
-        # ── 6. Invalider le cache des moyennes ───────────────────
+        # ── 7. Invalider le cache des moyennes ───────────────────
         await db.execute(
             text("DELETE FROM stats_averages WHERE user_id = :uid"),
             {"uid": user_id}
@@ -156,5 +175,6 @@ async def replace_import(
         "wizard_id":      wizard_info["wizard_id"],
         "rune_count":     len(runes),
         "artifact_count": len(artifacts),
+        "unit_count":     len(units),
         "imported_at":    new_import.imported_at,
     }
