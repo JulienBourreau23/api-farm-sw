@@ -1,6 +1,11 @@
 """
 Service d'import : remplace l'ancien import de l'utilisateur dans une transaction unique.
 Si quelque chose plante, l'ancien import est conservé intact.
+
+Logique imports :
+  - import actif    : is_active = true,  archived_at = null
+  - import précédent: is_active = false, archived_at = NOW()
+  - On garde max 2 imports par user → le 3ème (le plus ancien archivé) est supprimé
 """
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -156,14 +161,33 @@ async def replace_import(
                 }
             )
 
-        # ── 6. Supprimer l'ancien import (CASCADE runes + artefacts + owned_monsters) ──
+        # ── 6. Archiver l'ancien import (au lieu de le supprimer) ──
         if old_import:
             await db.execute(
-                text("DELETE FROM sw_imports WHERE id = :id"),
+                text("""
+                    UPDATE sw_imports
+                    SET is_active = false, archived_at = NOW()
+                    WHERE id = :id
+                """),
                 {"id": old_import.id}
             )
 
-        # ── 7. Invalider le cache des moyennes ───────────────────
+        # ── 7. Supprimer les imports archivés en excès (garder max 1) ──
+        # Si l'user a déjà un import archivé, on supprime le plus ancien
+        await db.execute(
+            text("""
+                DELETE FROM sw_imports
+                WHERE id IN (
+                    SELECT id FROM sw_imports
+                    WHERE user_id = :uid AND is_active = false
+                    ORDER BY archived_at DESC
+                    OFFSET 1
+                )
+            """),
+            {"uid": user_id}
+        )
+
+        # ── 8. Invalider le cache des moyennes ───────────────────
         await db.execute(
             text("DELETE FROM stats_averages WHERE user_id = :uid"),
             {"uid": user_id}
