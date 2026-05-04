@@ -1,9 +1,22 @@
+import os
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.database import get_db
 
 router = APIRouter(prefix="/monsters", tags=["monsters"])
+
+ICONS_DIR = "/srv/sw_coaching/icons/monsters"
+
+
+@router.get("/icon/{unit_master_id}")
+async def get_monster_icon(unit_master_id: int):
+    """Sert l'icône d'un monstre depuis le dossier partagé Proxmox."""
+    icon_path = f"{ICONS_DIR}/{unit_master_id}.png"
+    if not os.path.exists(icon_path):
+        raise HTTPException(status_code=404, detail="Icône non trouvée.")
+    return FileResponse(icon_path, media_type="image/png", headers={"Cache-Control": "public, max-age=86400"})
 
 
 @router.get("/{user_id}")
