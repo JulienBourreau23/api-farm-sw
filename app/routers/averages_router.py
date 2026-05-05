@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, HTTPException
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from typing import Optional
@@ -7,6 +7,47 @@ from app.services.averages import compute_averages, get_cached_averages
 from app.schemas import SetAveragesOut, SubstatAverage
 
 router = APIRouter(prefix="/averages", tags=["averages"])
+
+
+# ⚠️ Cette route DOIT être avant /{user_id}/{import_id}
+# sinon FastAPI tente de caster "previous" en int et échoue silencieusement
+@router.get("/{user_id}/previous", response_model=SetAveragesOut)
+async def get_previous_averages(
+    user_id: int,
+    set_id: Optional[int]   = Query(None, description="ID du set, null = tous sets"),
+    slot_no: Optional[int]  = Query(None, ge=1, le=6, description="Slot 1-6, null = tous"),
+    pri_stat: Optional[int] = Query(None, description="Filtre stat principale (slots 2/4/6)"),
+    db: AsyncSession        = Depends(get_db),
+):
+    """
+    Retourne les moyennes de substats de l'import précédent (archivé).
+    Utilisé pour afficher la barre de comparaison sur le dashboard/runes/artefacts.
+    Retourne une liste vide si aucun import précédent.
+    """
+    result = await db.execute(
+        text("""
+            SELECT id FROM sw_imports
+            WHERE user_id = :user_id AND is_active = false
+            ORDER BY archived_at DESC
+            LIMIT 1
+        """),
+        {"user_id": user_id}
+    )
+    row = result.fetchone()
+
+    if not row:
+        return _build_response([], set_id, slot_no, pri_stat)
+
+    prev_import_id = row.id
+
+    averages = await compute_averages(
+        db, user_id, prev_import_id,
+        set_id=set_id,
+        slot_no=slot_no,
+        pri_stat_filter=pri_stat,
+    )
+
+    return _build_response(averages, set_id, slot_no, pri_stat)
 
 
 @router.get("/{user_id}/{import_id}", response_model=SetAveragesOut)
@@ -39,46 +80,6 @@ async def get_averages(
         pri_stat_filter=pri_stat,
         min_upgrade=min_upgrade,
         is_ancient=is_ancient,
-    )
-
-    return _build_response(averages, set_id, slot_no, pri_stat)
-
-
-@router.get("/{user_id}/previous", response_model=SetAveragesOut)
-async def get_previous_averages(
-    user_id: int,
-    set_id: Optional[int]   = Query(None, description="ID du set, null = tous sets"),
-    slot_no: Optional[int]  = Query(None, ge=1, le=6, description="Slot 1-6, null = tous"),
-    pri_stat: Optional[int] = Query(None, description="Filtre stat principale (slots 2/4/6)"),
-    db: AsyncSession        = Depends(get_db),
-):
-    """
-    Retourne les moyennes de substats de l'import précédent (archivé).
-    Utilisé pour afficher la barre de comparaison sur le dashboard/runes/artefacts.
-    Retourne une liste vide si aucun import précédent.
-    """
-    # Récupérer l'import archivé le plus récent
-    result = await db.execute(
-        text("""
-            SELECT id FROM sw_imports
-            WHERE user_id = :user_id AND is_active = false
-            ORDER BY archived_at DESC
-            LIMIT 1
-        """),
-        {"user_id": user_id}
-    )
-    row = result.fetchone()
-
-    if not row:
-        return _build_response([], set_id, slot_no, pri_stat)
-
-    prev_import_id = row.id
-
-    averages = await compute_averages(
-        db, user_id, prev_import_id,
-        set_id=set_id,
-        slot_no=slot_no,
-        pri_stat_filter=pri_stat,
     )
 
     return _build_response(averages, set_id, slot_no, pri_stat)
