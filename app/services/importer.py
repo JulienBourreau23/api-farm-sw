@@ -7,6 +7,7 @@ Logique imports :
   - import précédent: is_active = false, archived_at = NOW()
   - On garde max 2 imports par user → le 3ème (le plus ancien archivé) est supprimé
 """
+import json
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 from app.services.parser import parse_sw_json
@@ -147,9 +148,9 @@ async def replace_import(
             await db.execute(
                 text("""
                     INSERT INTO owned_monsters (
-                        import_id, unit_id_sw, unit_master_id, stars, level
+                        import_id, unit_id_sw, unit_master_id, stars, level, skills
                     ) VALUES (
-                        :import_id, :unit_id_sw, :unit_master_id, :stars, :level
+                        :import_id, :unit_id_sw, :unit_master_id, :stars, :level, :skills
                     )
                 """),
                 {
@@ -158,6 +159,7 @@ async def replace_import(
                     "unit_master_id": unit["unit_master_id"],
                     "stars":          unit["stars"],
                     "level":          unit["level"],
+                    "skills":         json.dumps(unit["skills"]),
                 }
             )
 
@@ -173,7 +175,6 @@ async def replace_import(
             )
 
         # ── 7. Supprimer les imports archivés en excès (garder max 1) ──
-        # Si l'user a déjà un import archivé, on supprime le plus ancien
         await db.execute(
             text("""
                 DELETE FROM sw_imports

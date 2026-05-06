@@ -52,6 +52,7 @@ def extract_units(data: dict) -> list[dict]:
       - unit_master_id : ID du type de monstre = com2us_id dans monsters_ref
       - class          : étoiles actuelles 1-6
       - unit_level     : niveau actuel 1-40
+      - skills         : [[skill_id, level], ...] niveaux actuels des skills
     """
     units = []
     for unit in data.get("unit_list", []):
@@ -64,6 +65,7 @@ def extract_units(data: dict) -> list[dict]:
             "unit_master_id": unit_master_id,
             "stars":          unit.get("class"),
             "level":          unit.get("unit_level"),
+            "skills":         unit.get("skills", []),  # [[skill_id, level], ...]
         })
     return units
 
