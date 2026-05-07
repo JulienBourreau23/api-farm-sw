@@ -24,11 +24,6 @@ async def get_owned_monsters(
     user_id: int,
     db: AsyncSession = Depends(get_db),
 ):
-    """
-    Retourne les monstres possédés de l'import actif,
-    enrichis avec nom FR/EN, élément, lucksack_slug et skill_ups_to_max.
-    """
-    # ── 1. Récupérer l'import actif ──────────────────────────
     result = await db.execute(
         text("""
             SELECT id FROM sw_imports
@@ -43,7 +38,6 @@ async def get_owned_monsters(
 
     import_id = row.id
 
-    # ── 2. JOIN owned_monsters + monsters_ref ────────────────
     result = await db.execute(
         text("""
             SELECT
@@ -80,31 +74,33 @@ async def get_owned_monsters(
         element       = row.element or 0
         element_names = ELEMENT_NAMES.get(element, {"fr": "Inconnu", "en": "Unknown"})
 
-        # Calcul skill up : somme des (level - 1) de chaque skill
-        # skills format JSON : [[skill_id, level], ...]
-        is_skilled_up = False
+        current_skill_ups = 0
+        is_skilled_up     = False
+
         if row.skill_ups_to_max and row.skills:
             try:
                 current_skill_ups = sum(max(0, s[1] - 1) for s in row.skills if len(s) >= 2)
-                is_skilled_up = current_skill_ups >= row.skill_ups_to_max
+                is_skilled_up     = current_skill_ups >= row.skill_ups_to_max
             except (TypeError, IndexError):
-                is_skilled_up = False
+                current_skill_ups = 0
+                is_skilled_up     = False
 
         monsters.append({
-            "unit_id_sw":       row.unit_id_sw,
-            "unit_master_id":   row.unit_master_id,
-            "name_fr":          row.name_fr or f"Monstre {row.unit_master_id}",
-            "name_en":          row.name_en or f"Monster {row.unit_master_id}",
-            "element":          element,
-            "element_fr":       element_names["fr"],
-            "element_en":       element_names["en"],
-            "natural_stars":    row.natural_stars,
-            "stars":            row.stars,
-            "level":            row.level,
-            "lucksack_slug":    row.lucksack_slug,
-            "lucksack_url":     f"https://lucksack.gg/monster/{row.lucksack_slug}" if row.lucksack_slug else None,
-            "skill_ups_to_max": row.skill_ups_to_max,
-            "is_skilled_up":    is_skilled_up,
+            "unit_id_sw":         row.unit_id_sw,
+            "unit_master_id":     row.unit_master_id,
+            "name_fr":            row.name_fr or f"Monstre {row.unit_master_id}",
+            "name_en":            row.name_en or f"Monster {row.unit_master_id}",
+            "element":            element,
+            "element_fr":         element_names["fr"],
+            "element_en":         element_names["en"],
+            "natural_stars":      row.natural_stars,
+            "stars":              row.stars,
+            "level":              row.level,
+            "lucksack_slug":      row.lucksack_slug,
+            "lucksack_url":       f"https://lucksack.gg/monster/{row.lucksack_slug}" if row.lucksack_slug else None,
+            "skill_ups_to_max":   row.skill_ups_to_max,
+            "current_skill_ups":  current_skill_ups,
+            "is_skilled_up":      is_skilled_up,
         })
 
     return monsters
